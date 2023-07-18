@@ -18,14 +18,12 @@ namespace Platformer
         /// Dynamic objects' velocities will change in response to physics effects. They can only collide with fixed objects (static collision to be implemented).
         /// </summary>
         public enum Type { Fixed, Static, Dynamic }
-
-        public static float precisionOffset = 0.0001f;
         
         public bool feelsGravity;
         public float gravityStrength; //Will be assigned to the PhysicsManager's default value when added to the PhysicsManager.
         public Type type;
 
-        Vector2 velocity;
+        protected Vector2 velocity;
 
         public PhysicsObject(GameObject gameObject, Type type, bool feelsGravity = true)
         {
@@ -36,7 +34,7 @@ namespace Platformer
 
         public override void Update(GameTime gameTime)
         {
-            float timeStep = (float)gameTime.ElapsedGameTime.TotalSeconds;
+            float timeStep = TimeStep(gameTime);
             if (type == Type.Dynamic)
             {
                 if(feelsGravity)
@@ -57,36 +55,56 @@ namespace Platformer
             }
         }
 
+        public void PositionSide(Side side, float value)
+        {
+            float delta = value - collisionBox.GetSide(side);
+            if (side == Side.Top || side == Side.Bottom)
+                gameObject.Position.Y += delta;
+            else
+                gameObject.Position.X += delta;
+        }
+
         public virtual void HandleCollision(CollisionInfo collision)
         {
             if (type != Type.Dynamic)
                 return;
-            if(collision.surface == CollisionInfo.Surface.Top)
+            PhysicsObject other = collision.obj1 == this ? collision.obj2 : collision.obj1;
+            if (!collisionBox.Intersects(other.collisionBox))
+                return;
+
+            if(collision.surface == Side.Top)
             {
-                gameObject.Position.Y += collision.overlapDistance + precisionOffset;
+                PositionSide(Side.Top, other.collisionBox.Bottom + PhysicsManager.precisionOffset);
                 velocity.Y = 0f;
             }
-            else if(collision.surface == CollisionInfo.Surface.Bottom)
+            else if(collision.surface == Side.Bottom)
             {
-                gameObject.Position.Y -= collision.overlapDistance + precisionOffset;
+                PositionSide(Side.Bottom, other.collisionBox.Top - PhysicsManager.precisionOffset);
                 velocity.Y = 0f;
             }
-            else if(collision.surface == CollisionInfo.Surface.Left)
+            else if(collision.surface == Side.Left)
             {
-                gameObject.Position.X += collision.overlapDistance + precisionOffset;
+                PositionSide(Side.Left, other.collisionBox.Right + PhysicsManager.precisionOffset);
                 velocity.X = 0f;
             }
-            else if(collision.surface == CollisionInfo.Surface.Right)
+            else if(collision.surface == Side.Right)
             {
-                gameObject.Position.X -= collision.overlapDistance + precisionOffset;
+                PositionSide(Side.Right, other.collisionBox.Left - PhysicsManager.precisionOffset);
                 velocity.X = 0f;
             }
+        }
+
+        protected float TimeStep(GameTime gameTime)
+        {
+            return (float)gameTime.ElapsedGameTime.TotalSeconds;
         }
     }
 
     //PhysicsManager updates after individual objects
     internal class PhysicsManager : IManaged
     {
+        public static float precisionOffset = 0.0001f;
+
         /// <param name="gravityStrength"> in units/second^2</param>
         public PhysicsManager(float gravityStrength)
         {
@@ -124,26 +142,26 @@ namespace Platformer
                 throw new ArgumentException("Current CheckCollision implementation: obj1 must be dynamic and obj2 must be non-dynamic");
 
             Rect col1 = obj1.collisionBox, col2 = obj2.collisionBox;
-            List<CollisionInfo.Surface> collidingSurfaces = new();
-            Rect overlap = obj1.collisionBox.Intersect(obj2.collisionBox);
-            if (overlap.Height <= 0f || overlap.Width <= 0f)
+            List<Side> collidingSurfaces = new();
+            Rect overlap = obj1.collisionBox.Intersect(obj2.collisionBox, out bool intersects);
+            if (!intersects)
                 return null;
 
             //TEMPORARY CODE - should be replaced with better surface detection.
             if(col1.Top > col2.Top) //col1 top is lower
-                collidingSurfaces.Add(CollisionInfo.Surface.Top);
+                collidingSurfaces.Add(Side.Top);
             if(col1.Bottom < col2.Bottom) //col1 bottom is higher
-                collidingSurfaces.Add(CollisionInfo.Surface.Bottom);
+                collidingSurfaces.Add(Side.Bottom);
             if(col1.Left > col2.Left) //col1 left is further right
-                collidingSurfaces.Add(CollisionInfo.Surface.Left);
+                collidingSurfaces.Add(Side.Left);
             if(col1.Right < col2.Right) //col2 right is further left
-                collidingSurfaces.Add(CollisionInfo.Surface.Right);
+                collidingSurfaces.Add(Side.Right);
 
             List<CollisionInfo> collisions = new();
-            foreach(CollisionInfo.Surface surface in collidingSurfaces)
+            foreach(Side surface in collidingSurfaces)
             {
                 float overlapDist;
-                if(surface == CollisionInfo.Surface.Bottom || surface == CollisionInfo.Surface.Top)
+                if(surface == Side.Bottom || surface == Side.Top)
                     overlapDist = overlap.Height;
                 else
                     overlapDist = overlap.Width;
@@ -166,8 +184,6 @@ namespace Platformer
             }
             foreach(CollisionInfo collision in collisions.OrderByDescending(c => c.overlapRect.Area).ThenByDescending(c => c.SurfaceLength))
             {
-                if (!collision.obj1.collisionBox.Intersects(collision.obj2.collisionBox))
-                    continue;
                 PhysicsObject obj;
                 if (collision.obj1.type == PhysicsObject.Type.Dynamic)
                     obj = collision.obj1;
@@ -195,20 +211,20 @@ namespace Platformer
         }
     }
 
+    public enum Side { Top, Right, Bottom, Left }
+
     internal struct CollisionInfo
     {
-        public enum Surface { Top, Right, Bottom, Left }
-
         public PhysicsObject obj1, obj2;
-        public Surface surface;
+        public Side surface;
         public Rect overlapRect;
         public float overlapDistance;
         
-        public bool HorizontalSurface { get => surface == Surface.Top || surface == Surface.Bottom; }
+        public bool HorizontalSurface { get => surface == Side.Top || surface == Side.Bottom; }
 
         public float SurfaceLength { get => HorizontalSurface ? overlapRect.Width : overlapRect.Height; }
 
-        public CollisionInfo(PhysicsObject obj1, PhysicsObject obj2, Surface collidedSurface, Rect overlapRect, float overlapDistance)
+        public CollisionInfo(PhysicsObject obj1, PhysicsObject obj2, Side collidedSurface, Rect overlapRect, float overlapDistance)
         {
             this.obj1 = obj1;
             this.obj2 = obj2;
@@ -216,7 +232,6 @@ namespace Platformer
             this.overlapRect = overlapRect;
             this.overlapDistance = overlapDistance;
         }
-
     }
 
     internal struct Rect
@@ -300,18 +315,37 @@ namespace Platformer
 
         public Rect Intersect(Rect rect)
         {
+            return Intersect(rect, out _);
+        }
+
+        public Rect Intersect(Rect rect, out bool intersects)
+        {
             Rect intersect = new();
             intersect.Top = MathF.Max(Top, rect.Top);
             intersect.Bottom = MathF.Min(Bottom, rect.Bottom);
             intersect.Left = MathF.Max(Left, rect.Left);
             intersect.Right = MathF.Min(Right, rect.Right);
+            intersects = intersect.Height > 0f && intersect.Width > 0f;
             return intersect;
         }
 
         public bool Intersects(Rect rect)
         {
-            Rect intersect = Intersect(rect);
-            return intersect.Height > 0f && intersect.Width > 0f;
+            Intersect(rect, out bool intersects);
+            return intersects;
+        }
+
+        public float GetSide(Side side)
+        {
+            if (side == Side.Top)
+                return Top;
+            if(side == Side.Bottom)
+                return Bottom;
+            if(side == Side.Left)
+                return Left;
+            if(side == Side.Right)
+                return Right;
+            throw new ArgumentException();
         }
     }
 }
