@@ -10,7 +10,7 @@ namespace Platformer
 {
     //Note: rotation currently not supported by this physics system. Usage on GameObjects with nonzero rotation will result in undefined behavior.
 
-    internal class PhysicsObject: Script
+    internal class PhysicsObject: Script<GameObject>
     {
         /// <summary>
         /// Fixed objects will not move at all.
@@ -43,15 +43,15 @@ namespace Platformer
                 }
             }
 
-            gameObject.Position += velocity * timeStep;
+            owningObject.Position += velocity * timeStep;
         }
 
         public Rect collisionBox
         {
             get
             {
-                Vector2 topLeft = gameObject.Position - gameObject.ObjectCenter;
-                return new Rect(topLeft, gameObject.Size);
+                Vector2 topLeft = owningObject.Position - owningObject.ObjectCenter;
+                return new Rect(topLeft, owningObject.Size);
             }
         }
 
@@ -59,9 +59,9 @@ namespace Platformer
         {
             float delta = value - collisionBox.GetSide(side);
             if (side == Side.Top || side == Side.Bottom)
-                gameObject.Position.Y += delta;
+                owningObject.Position.Y += delta;
             else
-                gameObject.Position.X += delta;
+                owningObject.Position.X += delta;
         }
 
         public virtual void HandleCollision(CollisionInfo collision)
@@ -101,7 +101,7 @@ namespace Platformer
     }
 
     //PhysicsManager updates after individual objects
-    internal class PhysicsManager : IManaged
+    internal class PhysicsManager : ManagedObject
     {
         public static float precisionOffset = 0.0001f;
 
@@ -195,23 +195,11 @@ namespace Platformer
             }
         }
 
-        public void Initialize()
-        {
-            
-        }
-
-        public void Update(GameTime gameTime)
+        public override void Update(GameTime gameTime)
         {
             CheckCollisions();
         }
-
-        public void DrawUpdate(GameTime gameTime)
-        {
-            
-        }
     }
-
-    public enum Side { Top, Right, Bottom, Left }
 
     internal struct CollisionInfo
     {
@@ -231,121 +219,6 @@ namespace Platformer
             this.surface = collidedSurface;
             this.overlapRect = overlapRect;
             this.overlapDistance = overlapDistance;
-        }
-    }
-
-    internal struct Rect
-    {
-        //public float Width, Height, X, Y;
-
-        public float Top = 0f, Left = 0f, Bottom = 0f, Right = 0f;
-
-        public float X
-        {
-            get => Left;
-            set
-            {
-                float w = Width;
-                Left = value;
-                Right = value + w;
-            }
-        }
-
-        public float Y
-        {
-            get => Top;
-            set
-            {
-                float h = Height;
-                Top = value;
-                Bottom = value + h;
-            }
-        }
-
-        public float Width
-        {
-            get => Right - Left;
-            set => Right = Left + value;
-        }
-
-        public float Height
-        {
-            get => Bottom - Top;
-            set => Bottom = Top + value;
-        }
-
-        public Vector2 Location 
-        { 
-            get => new Vector2(X, Y); 
-            set 
-            { 
-                X = value.X;
-                Y = value.Y;
-            }
-        }
-
-        public Vector2 Size 
-        { 
-            get => new Vector2(Width, Height);
-            set
-            {
-                Width = value.X;
-                Height = value.Y;
-            }
-        }
-
-        public float Area
-        {
-            get => Width * Height;
-        }
-
-        public Rect(Vector2 location, Vector2 size)
-        {
-            Location = location;
-            Size = size;
-        }
-
-        public Rect(float X, float Y, float Width, float Height)
-        {
-            this.X = X;
-            this.Y = Y;
-            this.Width = Width;
-            this.Height = Height;
-        }
-
-        public Rect Intersect(Rect rect)
-        {
-            return Intersect(rect, out _);
-        }
-
-        public Rect Intersect(Rect rect, out bool intersects)
-        {
-            Rect intersect = new();
-            intersect.Top = MathF.Max(Top, rect.Top);
-            intersect.Bottom = MathF.Min(Bottom, rect.Bottom);
-            intersect.Left = MathF.Max(Left, rect.Left);
-            intersect.Right = MathF.Min(Right, rect.Right);
-            intersects = intersect.Height > 0f && intersect.Width > 0f;
-            return intersect;
-        }
-
-        public bool Intersects(Rect rect)
-        {
-            Intersect(rect, out bool intersects);
-            return intersects;
-        }
-
-        public float GetSide(Side side)
-        {
-            if (side == Side.Top)
-                return Top;
-            if(side == Side.Bottom)
-                return Bottom;
-            if(side == Side.Left)
-                return Left;
-            if(side == Side.Right)
-                return Right;
-            throw new ArgumentException();
         }
     }
 }

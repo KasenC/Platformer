@@ -12,8 +12,11 @@ namespace Platformer
 {
     internal class Player:PhysicsObject
     {
-        public float maxSpeed = 5f, jumpSpeed = 5f, //in units/s
-            acceleration = 10f; //in units/s^2
+        public float maxSpeed = 6f, minJumpSpeed = 5f, maxJumpSpeed = 10f, //in units/s
+            acceleration = 12f, //in units/s^2
+            maxJumpCharge = 1f; //in seconds
+
+        protected float jumpCharge = 0f;
 
         private bool _grounded;
         protected bool Grounded
@@ -36,15 +39,15 @@ namespace Platformer
 
         public Player(GameObject obj) : base(obj, Type.Dynamic, true)
         {
-            gameObject.CenterPos = CenterPos.BottomMiddle;
+            owningObject.CenterPos = CenterPos.BottomMiddle;
         }
 
         public override void Update(GameTime gameTime)
         {
             if(Grounded)
-                gameObject.ColorMask = Color.LightGray;
+                owningObject.ColorMask = Color.LightGray;
             else
-                gameObject.ColorMask = Color.White;
+                owningObject.ColorMask = Color.White;
             HandleInput(gameTime);
 
             base.Update(gameTime);
@@ -82,7 +85,18 @@ namespace Platformer
 
                 if(Keyboard.GetState().IsKeyDown(Keys.Space))
                 {
-                    velocity.Y = -jumpSpeed;
+                    jumpCharge += timeStep;
+                }
+                else
+                {
+                    if(jumpCharge != 0f)
+                    {
+                        if (jumpCharge > maxJumpCharge)
+                            jumpCharge = maxJumpCharge;
+                        float jumpSpeed = minJumpSpeed + (maxJumpSpeed - minJumpSpeed) * (jumpCharge / maxJumpCharge);
+                        velocity.Y = -jumpSpeed;
+                        jumpCharge = 0f;
+                    }
                 }
             }
         }
