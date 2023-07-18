@@ -3,8 +3,6 @@ using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Platformer
 {
@@ -21,7 +19,7 @@ namespace Platformer
         
         public bool feelsGravity;
         public float gravityStrength; //Will be assigned to the PhysicsManager's default value when added to the PhysicsManager.
-        public Type type;
+        public readonly Type type;
 
         protected Vector2 velocity;
 
@@ -46,18 +44,23 @@ namespace Platformer
             owningObject.Position += velocity * timeStep;
         }
 
-        public Rect collisionBox
+        public Rect Bounds
         {
             get
             {
-                Vector2 topLeft = owningObject.Position - owningObject.ObjectCenter;
-                return new Rect(topLeft, owningObject.Size);
+                Vector2 topLeft = owningObject.Position - owningObject.ObjectPivot;
+                return new Rect(topLeft, owningObject.ObjectSize);
             }
+        }
+
+        public Vector2 Center
+        {
+            get => owningObject.Position - owningObject.ObjectPivot + owningObject.ObjectSize / 2f;
         }
 
         public void PositionSide(Side side, float value)
         {
-            float delta = value - collisionBox.GetSide(side);
+            float delta = value - Bounds.GetSide(side);
             if (side == Side.Top || side == Side.Bottom)
                 owningObject.Position.Y += delta;
             else
@@ -69,27 +72,27 @@ namespace Platformer
             if (type != Type.Dynamic)
                 return;
             PhysicsObject other = collision.obj1 == this ? collision.obj2 : collision.obj1;
-            if (!collisionBox.Intersects(other.collisionBox))
+            if (!Bounds.Intersects(other.Bounds))
                 return;
 
-            if(collision.surface == Side.Top)
+            if(collision.side == Side.Top)
             {
-                PositionSide(Side.Top, other.collisionBox.Bottom + PhysicsManager.precisionOffset);
+                PositionSide(Side.Top, other.Bounds.Bottom + PhysicsManager.precisionOffset);
                 velocity.Y = 0f;
             }
-            else if(collision.surface == Side.Bottom)
+            else if(collision.side == Side.Bottom)
             {
-                PositionSide(Side.Bottom, other.collisionBox.Top - PhysicsManager.precisionOffset);
+                PositionSide(Side.Bottom, other.Bounds.Top - PhysicsManager.precisionOffset);
                 velocity.Y = 0f;
             }
-            else if(collision.surface == Side.Left)
+            else if(collision.side == Side.Left)
             {
-                PositionSide(Side.Left, other.collisionBox.Right + PhysicsManager.precisionOffset);
+                PositionSide(Side.Left, other.Bounds.Right + PhysicsManager.precisionOffset);
                 velocity.X = 0f;
             }
-            else if(collision.surface == Side.Right)
+            else if(collision.side == Side.Right)
             {
-                PositionSide(Side.Right, other.collisionBox.Left - PhysicsManager.precisionOffset);
+                PositionSide(Side.Right, other.Bounds.Left - PhysicsManager.precisionOffset);
                 velocity.X = 0f;
             }
         }
@@ -141,9 +144,9 @@ namespace Platformer
             if (obj1.type != PhysicsObject.Type.Dynamic || obj2.type == PhysicsObject.Type.Dynamic)
                 throw new ArgumentException("Current CheckCollision implementation: obj1 must be dynamic and obj2 must be non-dynamic");
 
-            Rect col1 = obj1.collisionBox, col2 = obj2.collisionBox;
+            Rect col1 = obj1.Bounds, col2 = obj2.Bounds;
             List<Side> collidingSurfaces = new();
-            Rect overlap = obj1.collisionBox.Intersect(obj2.collisionBox, out bool intersects);
+            Rect overlap = obj1.Bounds.Intersect(obj2.Bounds, out bool intersects);
             if (!intersects)
                 return null;
 
@@ -204,11 +207,11 @@ namespace Platformer
     internal struct CollisionInfo
     {
         public PhysicsObject obj1, obj2;
-        public Side surface;
+        public Side side;
         public Rect overlapRect;
         public float overlapDistance;
         
-        public bool HorizontalSurface { get => surface == Side.Top || surface == Side.Bottom; }
+        public bool HorizontalSurface { get => side == Side.Top || side == Side.Bottom; }
 
         public float SurfaceLength { get => HorizontalSurface ? overlapRect.Width : overlapRect.Height; }
 
@@ -216,7 +219,7 @@ namespace Platformer
         {
             this.obj1 = obj1;
             this.obj2 = obj2;
-            this.surface = collidedSurface;
+            this.side = collidedSurface;
             this.overlapRect = overlapRect;
             this.overlapDistance = overlapDistance;
         }

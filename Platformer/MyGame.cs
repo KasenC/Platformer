@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework.Input;
 using Engine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Platformer
 {
@@ -21,6 +22,7 @@ namespace Platformer
             graphics.ApplyChanges();
             pixelsPerWorldUnit = 50f;
             drawOnPixelGrid = true;
+            
             physicsManager = new(10f);
             AddManagedObject(physicsManager);
 
@@ -34,7 +36,7 @@ namespace Platformer
             physicsManager.AddPhysicsObject(player);
             player.owningObject.SetTexture(Content.Load<Texture2D>("Player"));
             player.owningObject.Position = new Vector2(0f, 0f);
-            camera.AddScript(new FollowPlayerCam(player.owningObject));
+            camera.AddScript(new FollowPlayerCam(player));
 
             //Platform
             platform = new PhysicsObject(CreateGameObject(), PhysicsObject.Type.Fixed);
@@ -62,5 +64,37 @@ namespace Platformer
         }
     }
 
+    public abstract class Control
+    {
+        public abstract bool GetState();
+    }
 
+    public class KeyControl : Control
+    {
+        public List<Keys> keys;
+
+        public KeyControl(Keys key)
+        {
+            keys = new() { key };
+        }
+
+        public KeyControl(List<Keys> keys)
+        {
+            this.keys = keys;
+        }
+
+        public override bool GetState()
+        {
+            return Keyboard.GetState().GetPressedKeys().Any(x => keys.Contains(x));
+        }
+    }
+
+    internal static class Controls
+    {
+        public static Control
+            left = new KeyControl(Keys.A),
+            right = new KeyControl(Keys.D),
+            jump = new KeyControl(Keys.Space)
+        ;
+    }
 }
