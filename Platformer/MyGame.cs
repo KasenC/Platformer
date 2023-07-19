@@ -8,12 +8,15 @@ using System.Linq;
 
 namespace Platformer
 {
+    internal enum ControlID { Left, Right, Up, Down, Jump, LeftClick, RightClick, GodMode };
+
     public class MyGame : GameEngine
     {
         PhysicsManager physicsManager;
+        Level level;
         Player player;
         PhysicsObject platform;
-        List<PhysicsObject> blocks = new();
+
 
         protected override void Initialize()
         {
@@ -22,9 +25,20 @@ namespace Platformer
             graphics.ApplyChanges();
             pixelsPerWorldUnit = 50f;
             drawOnPixelGrid = true;
+
+            controls.Add(ControlID.Left, new KeyControl(Keys.A));
+            controls.Add(ControlID.Right, new KeyControl(Keys.D));
+            controls.Add(ControlID.Up, new KeyControl(Keys.W));
+            controls.Add(ControlID.Down, new KeyControl(Keys.S));
+            controls.Add(ControlID.Jump, new KeyControl(Keys.Space));
+            controls.Add(ControlID.LeftClick, new MouseButtonControl(MouseButton.Left));
+            controls.Add(ControlID.RightClick, new MouseButtonControl(MouseButton.Right));
+            controls.Add(ControlID.GodMode, new KeyControl(Keys.G));
             
             physicsManager = new(10f);
             AddManagedObject(physicsManager);
+            level = new(physicsManager);
+            AddManagedObject(level);
 
             base.Initialize();
         }
@@ -34,67 +48,31 @@ namespace Platformer
             //Player
             player = new Player(CreateGameObject());
             physicsManager.AddPhysicsObject(player);
-            player.owningObject.SetTexture(Content.Load<Texture2D>("Player"));
-            player.owningObject.Position = new Vector2(0f, 0f);
+            player.OwningObject.SetTexture(Content.Load<Texture2D>("Player"));
+            player.OwningObject.Position = new Vector2(0f, 0f);
             camera.AddScript(new FollowPlayerCam(player));
+            player.enableGodMode = true;
 
             //Platform
-            platform = new PhysicsObject(CreateGameObject(), PhysicsObject.Type.Fixed);
-            physicsManager.AddPhysicsObject(platform);
-            platform.owningObject.SetTexture(Content.Load<Texture2D>("400pxPlatform"));
-            platform.owningObject.Position = new Vector2(0f, 0f);
+            //platform = new PhysicsObject(CreateGameObject(), PhysicsObject.Type.Fixed);
+            //physicsManager.AddPhysicsObject(platform);
+            //platform.owningObject.SetTexture(Content.Load<Texture2D>("400pxPlatform"));
+            //platform.owningObject.Position = new Vector2(0f, 0f);
 
             //Blocks
-            Texture2D blockTex = Content.Load<Texture2D>("block");
-            void createBlock(float x, float y)
-            {
-                PhysicsObject block = new PhysicsObject(CreateGameObject(), PhysicsObject.Type.Fixed);
-                physicsManager.AddPhysicsObject(block);
-                block.owningObject.SetTexture(blockTex);
-                block.owningObject.Position = new Vector2(x, y);
-                blocks.Add(block);
-            }
-            for (int i = 0; i < 7; ++i)
-                createBlock(i - 7f, 0f);
+            level.LoadContent(Content);
+            level.enableClickBlockCreation = true;
+            for (int i = 0; i < 11; ++i)
+                level.CreateBlock(i - 7, 0);
             for (int i = 0; i < 6; ++i)
-                createBlock(-8f, -i);
+                level.CreateBlock(-8, -i);
 
+            //Test
+            //GameObject testObj = CreateGameObject();
+            //testObj.SetTexture(blockTex, CenterPos.Middle);
+            //testObj.AddScript();
 
             base.LoadContent();
         }
-    }
-
-    public abstract class Control
-    {
-        public abstract bool GetState();
-    }
-
-    public class KeyControl : Control
-    {
-        public List<Keys> keys;
-
-        public KeyControl(Keys key)
-        {
-            keys = new() { key };
-        }
-
-        public KeyControl(List<Keys> keys)
-        {
-            this.keys = keys;
-        }
-
-        public override bool GetState()
-        {
-            return Keyboard.GetState().GetPressedKeys().Any(x => keys.Contains(x));
-        }
-    }
-
-    internal static class Controls
-    {
-        public static Control
-            left = new KeyControl(Keys.A),
-            right = new KeyControl(Keys.D),
-            jump = new KeyControl(Keys.Space)
-        ;
     }
 }

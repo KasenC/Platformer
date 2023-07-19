@@ -22,6 +22,7 @@ namespace Platformer
         public readonly Type type;
 
         protected Vector2 velocity;
+        public Action<PhysicsObject> DisposalFunction { private get; set; }
 
         public PhysicsObject(GameObject gameObject, Type type, bool feelsGravity = true)
         {
@@ -41,30 +42,35 @@ namespace Platformer
                 }
             }
 
-            owningObject.Position += velocity * timeStep;
+            OwningObject.Position += velocity * timeStep;
+        }
+
+        public override void Destroy()
+        {
+            DisposalFunction?.Invoke(this);
         }
 
         public Rect Bounds
         {
             get
             {
-                Vector2 topLeft = owningObject.Position - owningObject.ObjectPivot;
-                return new Rect(topLeft, owningObject.ObjectSize);
+                Vector2 topLeft = OwningObject.Position - OwningObject.ObjectPivot;
+                return new Rect(topLeft, OwningObject.ObjectSize);
             }
         }
 
         public Vector2 Center
         {
-            get => owningObject.Position - owningObject.ObjectPivot + owningObject.ObjectSize / 2f;
+            get => OwningObject.Position - OwningObject.ObjectPivot + OwningObject.ObjectSize / 2f;
         }
 
         public void PositionSide(Side side, float value)
         {
             float delta = value - Bounds.GetSide(side);
             if (side == Side.Top || side == Side.Bottom)
-                owningObject.Position.Y += delta;
+                OwningObject.Position.Y += delta;
             else
-                owningObject.Position.X += delta;
+                OwningObject.Position.X += delta;
         }
 
         public virtual void HandleCollision(CollisionInfo collision)
@@ -103,6 +109,7 @@ namespace Platformer
         }
     }
 
+
     //PhysicsManager updates after individual objects
     internal class PhysicsManager : ManagedObject
     {
@@ -116,7 +123,7 @@ namespace Platformer
 
         public float gravityStrength;
         
-        private List<PhysicsObject> staticObjects = new(), dynamicObjects = new(), fixedObjects = new();
+        private readonly List<PhysicsObject> staticObjects = new(), dynamicObjects = new(), fixedObjects = new();
 
         public void AddPhysicsObject(PhysicsObject physicsObject)
         {
@@ -137,6 +144,12 @@ namespace Platformer
             {
                 throw new NotImplementedException();
             }
+            physicsObject.DisposalFunction = RemovePhysicsObject;
+        }
+
+        public void RemovePhysicsObject(PhysicsObject physicsObject)
+        {
+            _ = staticObjects.Remove(physicsObject) || dynamicObjects.Remove(physicsObject) || fixedObjects.Remove(physicsObject);
         }
 
         protected List<CollisionInfo> CheckCollision(PhysicsObject obj1, PhysicsObject obj2)
@@ -176,9 +189,9 @@ namespace Platformer
         protected void CheckCollisions()
         {
             List<CollisionInfo> collisions = new();
-            foreach(PhysicsObject obj1 in dynamicObjects)
+            foreach(var obj1 in dynamicObjects)
             {
-                foreach(PhysicsObject obj2 in staticObjects.Concat(fixedObjects))
+                foreach(var obj2 in staticObjects.Concat(fixedObjects))
                 {
                     var objCollisions = CheckCollision(obj1, obj2);
                     if (objCollisions != null)

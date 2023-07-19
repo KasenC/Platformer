@@ -14,7 +14,7 @@ namespace Platformer
 
         public override void Update(GameTime gameTime)
         {
-            owningObject.position = player.Center;
+            OwningObject.position = player.Center;
         }
     }
 }
