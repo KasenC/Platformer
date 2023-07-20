@@ -63,9 +63,9 @@ namespace Platformer
             level.LoadContent(Content);
             level.enableClickBlockCreation = true;
             for (int i = 0; i < 11; ++i)
-                level.CreateBlock(i - 7, 0);
+                level.CreateBlock(new(i - 7, 0));
             for (int i = 0; i < 6; ++i)
-                level.CreateBlock(-8, -i);
+                level.CreateBlock(new(-8, -i));
 
             //Test
             //GameObject testObj = CreateGameObject();

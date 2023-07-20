@@ -10,11 +10,38 @@ using System.Threading.Tasks;
 
 namespace Platformer
 {
+    internal class Block:PhysicsObject
+    {
+        private static readonly Dictionary<int, Texture2D> textures = new();
+
+        public static void SetTexture(int id, Texture2D texture)
+        {
+            textures[id] = texture;
+        }
+
+        protected static Texture2D GetTexture(int id)
+        {
+            if (!textures.TryGetValue(id, out Texture2D texture))
+                return textures[1];
+            return texture;
+        }
+        
+        Point location;
+        int id;
+
+        public Block(GameObject obj, Point location, int id): base(obj, Type.Fixed)
+        {
+            this.location = location;
+            this.id = id;
+            OwningObject.SetTexture(GetTexture(id));
+            OwningObject.Position = location.ToVector2();
+        }
+    }
+
     internal class Level:ManagedObject
     {
         protected PhysicsManager physicsManager;
-        protected List<PhysicsObject> blocks = new();
-        protected Dictionary<int, Texture2D> blockTextures = new();
+        protected Dictionary<Point, Block> blocks = new();
         internal bool enableClickBlockCreation = false;
         internal int blockIdToCreate = 1;
 
@@ -41,39 +68,30 @@ namespace Platformer
 
         public void LoadContent(ContentManager content)
         {
-            blockTextures.Add(1, content.Load<Texture2D>("block"));
+            Block.SetTexture(1, content.Load<Texture2D>("block"));
         }
 
-        public PhysicsObject GetBlock(Point position)
+        public Block GetBlock(Point location)
         {
-            return blocks.Find(x => (x.OwningObject.Position - position.ToVector2()).LengthSquared() < PhysicsManager.precisionOffset);
+            blocks.TryGetValue(location, out Block block);
+            return block;
         }
 
-        public void CreateBlock(int x, int y, int blockId = 1)
+        public void RemoveBlock(Point location)
         {
-            PhysicsObject block = new PhysicsObject(CreateGameObject(), PhysicsObject.Type.Fixed);
-            physicsManager.AddPhysicsObject(block);
-            Texture2D blockTex;
-            if (!blockTextures.TryGetValue(blockId, out blockTex))
-                blockTex = blockTextures[1];
-            block.OwningObject.SetTexture(blockTex);
-            block.OwningObject.Position = new Vector2(x, y);
-            blocks.Add(block);
-        }
-
-        public void RemoveBlock(Point position)
-        {
-            PhysicsObject block = GetBlock(position);
+            Block block = GetBlock(location);
             if (block != null)
             {
-                blocks.Remove(block);
-                RemoveGameObject(block.OwningObject);
+                blocks.Remove(location);
+                DestroyGameObject(block.OwningObject);
             }
         }
 
-        public void CreateBlock(Point position, int blockId = 1)
+        public void CreateBlock(Point location, int blockId = 1)
         {
-            CreateBlock(position.X, position.Y, blockId);
+            Block block = new Block(CreateGameObject(), location, blockId);
+            physicsManager.AddPhysicsObject(block);
+            blocks.Add(location, block);
         }
     }
 }
