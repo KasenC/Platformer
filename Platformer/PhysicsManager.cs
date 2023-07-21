@@ -21,7 +21,7 @@ namespace Platformer
         public float gravityStrength; //Will be assigned to the PhysicsManager's default value when added to the PhysicsManager.
         public readonly Type type;
 
-        protected Vector2 velocity;
+        public Vector2 velocity;
         public Action<PhysicsObject> DisposalFunction { private get; set; }
 
         public PhysicsObject(GameObject gameObject, Type type, bool feelsGravity = true)
@@ -83,22 +83,22 @@ namespace Platformer
 
             if(collision.side == Side.Top)
             {
-                PositionSide(Side.Top, other.Bounds.Bottom + PhysicsManager.precisionOffset);
+                PositionSide(Side.Top, other.Bounds.Bottom + PhysicsManager.epsilon);
                 velocity.Y = 0f;
             }
             else if(collision.side == Side.Bottom)
             {
-                PositionSide(Side.Bottom, other.Bounds.Top - PhysicsManager.precisionOffset);
+                PositionSide(Side.Bottom, other.Bounds.Top - PhysicsManager.epsilon);
                 velocity.Y = 0f;
             }
             else if(collision.side == Side.Left)
             {
-                PositionSide(Side.Left, other.Bounds.Right + PhysicsManager.precisionOffset);
+                PositionSide(Side.Left, other.Bounds.Right + PhysicsManager.epsilon);
                 velocity.X = 0f;
             }
             else if(collision.side == Side.Right)
             {
-                PositionSide(Side.Right, other.Bounds.Left - PhysicsManager.precisionOffset);
+                PositionSide(Side.Right, other.Bounds.Left - PhysicsManager.epsilon);
                 velocity.X = 0f;
             }
         }
@@ -113,7 +113,7 @@ namespace Platformer
     //PhysicsManager updates after individual objects
     internal class PhysicsManager : ManagedObject
     {
-        public static float precisionOffset = 0.0001f;
+        public static float epsilon = 0.0001f;
 
         /// <param name="gravityStrength"> in units/second^2</param>
         public PhysicsManager(float gravityStrength)
@@ -152,38 +152,130 @@ namespace Platformer
             _ = staticObjects.Remove(physicsObject) || dynamicObjects.Remove(physicsObject) || fixedObjects.Remove(physicsObject);
         }
 
-        protected List<CollisionInfo> CheckCollision(PhysicsObject obj1, PhysicsObject obj2)
+        protected CollisionInfo? CheckCollision(PhysicsObject obj1, PhysicsObject obj2)
         {
             if (obj1.type != PhysicsObject.Type.Dynamic || obj2.type == PhysicsObject.Type.Dynamic)
                 throw new ArgumentException("Current CheckCollision implementation: obj1 must be dynamic and obj2 must be non-dynamic");
 
             Rect col1 = obj1.Bounds, col2 = obj2.Bounds;
-            List<Side> collidingSurfaces = new();
-            Rect overlap = obj1.Bounds.Intersect(obj2.Bounds, out bool intersects);
+            Rect intersection = col1.Intersect(col2, out bool intersects);
             if (!intersects)
                 return null;
 
-            //TEMPORARY CODE - should be replaced with better surface detection.
-            if(col1.Top > col2.Top) //col1 top is lower
-                collidingSurfaces.Add(Side.Top);
-            if(col1.Bottom < col2.Bottom) //col1 bottom is higher
-                collidingSurfaces.Add(Side.Bottom);
-            if(col1.Left > col2.Left) //col1 left is further right
-                collidingSurfaces.Add(Side.Left);
-            if(col1.Right < col2.Right) //col2 right is further left
-                collidingSurfaces.Add(Side.Right);
-
-            List<CollisionInfo> collisions = new();
-            foreach(Side surface in collidingSurfaces)
+            Vector2 velocity = obj1.velocity;
+            int velocitySignX = MathF.Sign(velocity.X), velocitySignY = MathF.Sign(velocity.Y);
+            Rect overlap;
+            if(velocitySignX == 1)
             {
-                float overlapDist;
-                if(surface == Side.Bottom || surface == Side.Top)
-                    overlapDist = overlap.Height;
-                else
-                    overlapDist = overlap.Width;
-                collisions.Add(new(obj1, obj2, surface, overlap, overlapDist));
+                overlap.Right = col1.Right;
+                overlap.Left = col2.Left;
             }
-            return collisions;
+            else if(velocitySignX == -1)
+            {
+                overlap.Left = col1.Left;
+                overlap.Right = col2.Right;
+            }
+            else
+            {
+                overlap.Left = intersection.Left;
+                overlap.Right = intersection.Right;
+            }
+
+            if (velocitySignY == 1)
+            {
+                overlap.Bottom = col1.Bottom;
+                overlap.Top = col2.Top;
+            }
+            else if (velocitySignY == -1)
+            {
+                overlap.Top = col1.Top;
+                overlap.Bottom = col2.Bottom;
+            }
+            else
+            {
+                overlap.Top = intersection.Top;
+                overlap.Bottom = intersection.Bottom;
+            }
+
+            Vector2 overlapVector;
+            Side collisionSurface;
+            float surfaceLength;
+
+            if(velocitySignX == 0 && velocitySignY == 0)
+            {
+                List<Side> possibleSurfaces = new();
+                if (col1.Top > col2.Top) //col1 top is lower
+                    possibleSurfaces.Add(Side.Top);
+                if (col1.Bottom < col2.Bottom) //col1 bottom is higher
+                    possibleSurfaces.Add(Side.Bottom);
+                if (col1.Left > col2.Left) //col1 left is further right
+                    possibleSurfaces.Add(Side.Left);
+                if (col1.Right < col2.Right) //col2 right is further left
+                    possibleSurfaces.Add(Side.Right);
+
+                Side[] verticalSurfaces = new Side[] { Side.Left, Side.Right },
+                    horizontalSurfaces = new Side[] { Side.Top, Side.Bottom };
+                if (possibleSurfaces.Intersect(horizontalSurfaces).Count() > 1)
+                    possibleSurfaces = possibleSurfaces.Except(horizontalSurfaces).ToList();
+                if (possibleSurfaces.Intersect(verticalSurfaces).Count() > 1)
+                    possibleSurfaces = possibleSurfaces.Except(verticalSurfaces).ToList();
+                if (!possibleSurfaces.Any())
+                    possibleSurfaces.Add(Side.Bottom);
+                
+                if(possibleSurfaces.Count > 1)
+                {
+                    if (overlap.Width > overlap.Height)
+                        possibleSurfaces = possibleSurfaces.Union(horizontalSurfaces).ToList();
+                    else
+                        possibleSurfaces = possibleSurfaces.Union(verticalSurfaces).ToList();
+                }
+                collisionSurface = possibleSurfaces.First();
+
+                if (collisionSurface == Side.Bottom)
+                {
+                    overlapVector = new(0f, overlap.Height);
+                    surfaceLength = overlap.Width;
+                }
+                else if(collisionSurface == Side.Top)
+                {
+                    overlapVector = new(0f, -overlap.Height);
+                    surfaceLength = overlap.Width;
+                }
+                else if(collisionSurface == Side.Right)
+                {
+                    overlapVector = new(overlap.Width, 0f);
+                    surfaceLength = overlap.Height;
+                }
+                else
+                {
+                    overlapVector = new(-overlap.Width, 0f);
+                    surfaceLength = overlap.Height;
+                }
+            }
+            else
+            {
+                float ratio = MathF.Abs(velocity.Y / velocity.X);
+                float projectedWidth = overlap.Height / ratio, projectedHeight = overlap.Width * ratio;
+                Rect backtrackedCol1 = new(col1);
+                if (projectedWidth > overlap.Width)
+                {
+                    collisionSurface = velocitySignX == 1 ? Side.Right : Side.Left;
+                    overlapVector = new Vector2(overlap.Width * velocitySignX, projectedHeight * velocitySignY);
+                    backtrackedCol1.Offset(-overlapVector);
+                    Rect initialIntersect = backtrackedCol1.Intersect(col2);
+                    surfaceLength = initialIntersect.Height;
+                }
+                else
+                {
+                    collisionSurface = velocitySignY == 1 ? Side.Bottom : Side.Top;
+                    overlapVector = new Vector2(projectedWidth * velocitySignX, overlap.Height * velocitySignY);
+                    backtrackedCol1.Offset(-overlapVector);
+                    Rect initialIntersect = backtrackedCol1.Intersect(col2);
+                    surfaceLength = initialIntersect.Width;
+                }
+            }
+
+            return new(obj1, obj2, collisionSurface, intersection, overlapVector, surfaceLength);
         }
 
         protected void CheckCollisions()
@@ -194,11 +286,11 @@ namespace Platformer
                 foreach(var obj2 in staticObjects.Concat(fixedObjects))
                 {
                     var objCollisions = CheckCollision(obj1, obj2);
-                    if (objCollisions != null)
-                        collisions.AddRange(objCollisions);
+                    if (objCollisions.HasValue)
+                        collisions.Add(objCollisions.Value);
                 }
             }
-            foreach(CollisionInfo collision in collisions.OrderByDescending(c => c.overlapRect.Area).ThenByDescending(c => c.SurfaceLength))
+            foreach (CollisionInfo collision in collisions.OrderByDescending(c => c.overlapVector.LengthSquared()).ThenByDescending(c => c.surfaceLength))
             {
                 PhysicsObject obj;
                 if (collision.obj1.type == PhysicsObject.Type.Dynamic)
@@ -221,20 +313,24 @@ namespace Platformer
     {
         public PhysicsObject obj1, obj2;
         public Side side;
-        public Rect overlapRect;
-        public float overlapDistance;
-        
-        public bool HorizontalSurface { get => side == Side.Top || side == Side.Bottom; }
+        public Rect intersection;
+        public Vector2 overlapVector;
+        public float surfaceLength;
 
-        public float SurfaceLength { get => HorizontalSurface ? overlapRect.Width : overlapRect.Height; }
+        public bool HorizontalSurface => side == Side.Top || side == Side.Bottom;
 
-        public CollisionInfo(PhysicsObject obj1, PhysicsObject obj2, Side collidedSurface, Rect overlapRect, float overlapDistance)
+        public float OverlapNormalComponent => HorizontalSurface ? overlapVector.Y : overlapVector.X;
+
+        public float OverlapParallelComponent => HorizontalSurface ? overlapVector.X : overlapVector.Y;
+
+        public CollisionInfo(PhysicsObject obj1, PhysicsObject obj2, Side collidedSurface, Rect intersection, Vector2 overlapVector, float surfaceLength)
         {
             this.obj1 = obj1;
             this.obj2 = obj2;
             this.side = collidedSurface;
-            this.overlapRect = overlapRect;
-            this.overlapDistance = overlapDistance;
+            this.intersection = intersection;
+            this.overlapVector = overlapVector;
+            this.surfaceLength = surfaceLength;
         }
     }
 }

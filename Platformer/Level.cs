@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.IO;
 
 namespace Platformer
 {
@@ -14,7 +15,12 @@ namespace Platformer
     {
         private static readonly Dictionary<int, Texture2D> textures = new();
 
-        public static void SetTexture(int id, Texture2D texture)
+        public static void LoadTextures(ContentManager content)
+        {
+            SetTexture(1, content.Load<Texture2D>("block"));
+        }
+
+        private static void SetTexture(int id, Texture2D texture)
         {
             textures[id] = texture;
         }
@@ -26,49 +32,25 @@ namespace Platformer
             return texture;
         }
         
-        Point location;
-        int id;
+        public readonly int id;
 
         public Block(GameObject obj, Point location, int id): base(obj, Type.Fixed)
         {
-            this.location = location;
             this.id = id;
             OwningObject.SetTexture(GetTexture(id));
             OwningObject.Position = location.ToVector2();
         }
     }
 
-    internal class Level:ManagedObject
+    internal class Level: ManagedObject
     {
         protected PhysicsManager physicsManager;
         protected Dictionary<Point, Block> blocks = new();
-        internal bool enableClickBlockCreation = false;
-        internal int blockIdToCreate = 1;
+        public string levelPath;
 
         public Level(PhysicsManager physicsManager)
         {
             this.physicsManager = physicsManager;
-        }
-
-        public override void Update(GameTime gameTime)
-        {
-            if(enableClickBlockCreation)
-            {
-                Point mousePos = Vector2.Floor(Controls.MouseWorldPos).ToPoint();
-                if (Controls.GetPressed(ControlID.RightClick))
-                {
-                    RemoveBlock(mousePos);
-                }
-                else if(Controls.GetPressed(ControlID.LeftClick))
-                {
-                    CreateBlock(mousePos, blockIdToCreate);
-                }
-            }
-        }
-
-        public void LoadContent(ContentManager content)
-        {
-            Block.SetTexture(1, content.Load<Texture2D>("block"));
         }
 
         public Block GetBlock(Point location)
@@ -89,9 +71,68 @@ namespace Platformer
 
         public void CreateBlock(Point location, int blockId = 1)
         {
+            if (blocks.ContainsKey(location))
+                return;
             Block block = new Block(CreateGameObject(), location, blockId);
             physicsManager.AddPhysicsObject(block);
             blocks.Add(location, block);
+        }
+
+        public void New(string path = "")
+        {
+            blocks.Clear();
+            levelPath = path;
+        }
+
+        public void SaveAs(string path)
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+            Directory.CreateDirectory(new FileInfo(path).Directory.FullName);
+            using var file = new StreamWriter(path);
+            foreach ((Point location, Block block) in blocks)
+            {
+                file.WriteLine("{0},{1},{2}", location.X, location.Y, block.id);
+            }
+        }
+
+        public bool Save()
+        {
+            if (levelPath == "")
+                return false;
+            SaveAs(levelPath);
+            return true;
+        }
+
+        public bool Load(string path)
+        {
+            if (!File.Exists(path))
+                return false;
+            New(path);
+            foreach(string line in File.ReadLines(path))
+            {
+                string[] tokens = line.Split(',');
+                if (tokens.Length != 3
+                    || !int.TryParse(tokens[0], out int x)
+                    || !int.TryParse(tokens[1], out int y)
+                    || !int.TryParse(tokens[2], out int id))
+                    continue;
+                CreateBlock(new(x, y), id);
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Load level if it exists, otherwise create new empty level
+        /// </summary>
+        /// <param name="path"></param>
+        /// <returns>true if level was loaded, otherwise false</returns>
+        public bool LoadOrNew(string path)
+        {
+            if (Load(path))
+                return true;
+            New(path);
+            return false;
         }
     }
 }

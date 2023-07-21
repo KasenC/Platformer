@@ -21,7 +21,8 @@ namespace Platformer
             wallSlideDrag = .5f,
             maxJumpCharge = .3f, //in seconds
             maxWallJumpCharge = .3f,
-            wallJumpRatio = 1.5f; //Ratio of vertical velocity to horizontal velocity when walljumping
+            wallJumpRatio = 1.5f, //Ratio of vertical velocity to horizontal velocity when walljumping
+            ledgeClimbRatio = 0.95f; //Height (relative to character) of ledge which can be climbed
 
         public bool enableGodMode = false;
 
@@ -29,28 +30,10 @@ namespace Platformer
 
         protected bool godMode = false;
 
+        protected bool Grounded;
         protected bool wallSliding, ledgeClimbing;
         protected Side wallSlideSide;
         protected float ledgeHeight;
-
-        private bool _grounded;
-        protected bool Grounded
-        {
-            get => _grounded;
-            set
-            {
-                if(value)
-                {
-                    feelsGravity = false;
-                    _grounded = true;
-                }
-                else
-                {
-                    feelsGravity = true;
-                    _grounded = false;
-                }
-            }
-        }
 
         public Player(GameObject obj) : base(obj, Type.Dynamic, true)
         {
@@ -59,28 +42,19 @@ namespace Platformer
 
         public override void Update(GameTime gameTime)
         {
-            if(godMode)
+            HandleInput(gameTime);
+            float timeStep = TimeStep(gameTime);
+
+            if (godMode)
             {
                 OwningObject.ColorMask = new Color(1f, .2f, 0f);
-            }
-            else if (Grounded)
-            {
-                OwningObject.ColorMask = new Color(.2f, .8f, .2f);
-                wallSliding = false;
-            }
-            else if (wallSliding)
-                OwningObject.ColorMask = new Color(1f, 1f, 0f);
-            else
-                OwningObject.ColorMask = new Color(.3f, 1f, .3f);
-            
-            HandleInput(gameTime);
-            if (godMode)
                 return;
+            }
 
-            float timeStep = TimeStep(gameTime);
             if(ledgeClimbing)
             {
-                velocity = new Vector2(ledgeClimbSpeed * (wallSlideSide == Side.Left ? -1f : 1f), -ledgeClimbSpeed);
+                OwningObject.ColorMask = new Color(1f, .6f, 0f);
+                velocity = new Vector2(maxSpeed / 3f * (wallSlideSide == Side.Left ? -1f : 1f), -ledgeClimbSpeed);
             }
             else
             {
@@ -88,12 +62,23 @@ namespace Platformer
                 {
                     velocity += Vector2.UnitY * gravityStrength * timeStep;
                 }
-                if(wallSliding)
+
+                if (Grounded)
                 {
+                    OwningObject.ColorMask = new Color(.2f, .8f, .2f);
+                }
+                else if (wallSliding)
+                {
+                    OwningObject.ColorMask = new Color(1f, 1f, 0f);
+                    velocity.X = .5f * (wallSlideSide == Side.Left ? -1f : 1f);
                     if (velocity.Y > maxWallSlideSpeed)
                         velocity.Y = maxWallSlideSpeed;
                     else if (velocity.Y < 0f)
-                        velocity.Y += MathF.Min(wallSlideDrag, MathF.Abs(velocity.Y));
+                        velocity.Y += MathF.Min(wallSlideDrag, -velocity.Y);
+                }
+                else
+                {
+                    OwningObject.ColorMask = new Color(.3f, 1f, .3f);
                 }
             }
 
@@ -112,54 +97,39 @@ namespace Platformer
 
             PhysicsObject other = collision.obj1 == this ? collision.obj2 : collision.obj1;
 
-            Rect currentOverlap = Bounds.Intersect(other.Bounds, out bool intersects);
-            if (!intersects)
-                return;
+            Rect currentOverlap = Bounds.Intersect(other.Bounds);
 
             if(collision.HorizontalSurface)
             {
-                if (currentOverlap.Width < 2 * PhysicsManager.precisionOffset)
-                    return;
-
-                if (collision.side == Side.Bottom)
+                if (currentOverlap.Width > PhysicsManager.epsilon && collision.side == Side.Bottom && !Grounded)
                 {
-                    if (Grounded)
-                        return;
                     Grounded = true;
-                    PositionSide(Side.Bottom, other.Bounds.Top + PhysicsManager.precisionOffset);
                 }
-                else
-                {
-                    PositionSide(Side.Top, other.Bounds.Bottom + PhysicsManager.precisionOffset);
-                }
-                velocity.Y = 0f;
             }
             else
             {
-                if (currentOverlap.Height < 2 * PhysicsManager.precisionOffset)
-                    return;
-                if (wallSliding && wallSlideSide == collision.side)
+                if (currentOverlap.Height > PhysicsManager.epsilon)
                 {
-                    ledgeHeight = MathF.Max(ledgeHeight, Bounds.Bottom - other.Bounds.Top);
-                    return;
+                    if (wallSliding) //Collision on wrong side, probably shouldn't happen
+                    {
+                        if(collision.side == wallSlideSide)
+                        {
+                            ledgeHeight = MathF.Max(ledgeHeight, Bounds.Bottom - other.Bounds.Top);
+                        }
+                        else
+                        {
+                            Debug.WriteLine("Warning: unexpected state, detected collision on both sides");
+                        }
+                    }
+                    else
+                    {
+                        wallSliding = true;
+                        wallSlideSide = collision.side;
+                        ledgeHeight = Bounds.Bottom - other.Bounds.Top;
+                    }
                 }
-                if (!Grounded)
-                {
-                    wallSliding = true;
-                    wallSlideSide = collision.side;
-                    ledgeHeight = Bounds.Bottom - other.Bounds.Top;
-                }
-
-                if (collision.side == Side.Left)
-                {
-                    PositionSide(Side.Left, other.Bounds.Right - PhysicsManager.precisionOffset);
-                }
-                else
-                {
-                    PositionSide(Side.Right, other.Bounds.Left + PhysicsManager.precisionOffset);
-                }
-                velocity.X = 0f;
             }
+            base.HandleCollision(collision);
         }
 
         protected void HandleInput(GameTime gameTime)
@@ -220,6 +190,8 @@ namespace Platformer
                 else if(velocity.X < -maxSpeed) 
                     velocity.X = -maxSpeed;
 
+                wallSliding = false;
+
                 if(Controls.GetState(ControlID.Jump))
                 {
                     jumpCharge += timeStep;
@@ -243,16 +215,12 @@ namespace Platformer
 
             if(wallSliding)
             {
-
                 if (Controls.GetState(ControlID.Down))
                 {
                     wallJumpCharge = 0f;
-                    if(wallSlideSide == Side.Left)
-                        OwningObject.Position.X += 2 * PhysicsManager.precisionOffset;
-                    else
-                        OwningObject.Position.X -= 2 * PhysicsManager.precisionOffset;
+                    wallSliding = false;
                 }
-                else if(Controls.GetState(ControlID.Up) && ledgeHeight <= OwningObject.ObjectSize.Y * .75f)
+                else if(Controls.GetState(ControlID.Up) && ledgeHeight <= OwningObject.ObjectSize.Y * ledgeClimbRatio)
                 {
                     wallJumpCharge = 0f;
                     ledgeClimbing = true;
@@ -265,6 +233,7 @@ namespace Platformer
                 {
                     if(wallJumpCharge > 0f)
                     {
+                        wallSliding = false;
                         if (wallJumpCharge > maxWallJumpCharge)
                             wallJumpCharge = maxWallJumpCharge;
                         float wallJumpSpeed = minWallJumpSpeed + (maxWallJumpSpeed - minWallJumpSpeed) * (wallJumpCharge / maxWallJumpCharge);

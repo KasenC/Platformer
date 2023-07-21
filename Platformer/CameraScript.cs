@@ -12,7 +12,7 @@ namespace Platformer
             this.player = player;
         }
 
-        public override void Update(GameTime gameTime)
+        public override void DrawUpdate(GameTime gameTime)
         {
             OwningObject.position = player.Center;
         }

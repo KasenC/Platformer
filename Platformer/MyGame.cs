@@ -5,18 +5,18 @@ using Engine;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.Xna.Framework.Content;
+using System.Reflection.Metadata;
 
 namespace Platformer
 {
-    internal enum ControlID { Left, Right, Up, Down, Jump, LeftClick, RightClick, GodMode };
+    internal enum ControlID { Left, Right, Up, Down, Jump, LeftClick, RightClick, GodMode, Save };
 
     public class MyGame : GameEngine
     {
         PhysicsManager physicsManager;
-        Level level;
+        LevelManager levelManager;
         Player player;
-        PhysicsObject platform;
-
 
         protected override void Initialize()
         {
@@ -34,11 +34,10 @@ namespace Platformer
             controls.Add(ControlID.LeftClick, new MouseButtonControl(MouseButton.Left));
             controls.Add(ControlID.RightClick, new MouseButtonControl(MouseButton.Right));
             controls.Add(ControlID.GodMode, new KeyControl(Keys.G));
+            controls.Add(ControlID.Save, new KeyControl(Keys.P));
             
-            physicsManager = new(10f);
-            AddManagedObject(physicsManager);
-            level = new(physicsManager);
-            AddManagedObject(level);
+            AddManagedObject(physicsManager = new(10f));
+            AddManagedObject(levelManager = new(physicsManager));
 
             base.Initialize();
         }
@@ -53,26 +52,64 @@ namespace Platformer
             camera.AddScript(new FollowPlayerCam(player));
             player.enableGodMode = true;
 
-            //Platform
-            //platform = new PhysicsObject(CreateGameObject(), PhysicsObject.Type.Fixed);
-            //physicsManager.AddPhysicsObject(platform);
-            //platform.owningObject.SetTexture(Content.Load<Texture2D>("400pxPlatform"));
-            //platform.owningObject.Position = new Vector2(0f, 0f);
-
-            //Blocks
-            level.LoadContent(Content);
-            level.enableClickBlockCreation = true;
-            for (int i = 0; i < 11; ++i)
-                level.CreateBlock(new(i - 7, 0));
-            for (int i = 0; i < 6; ++i)
-                level.CreateBlock(new(-8, -i));
+            //Level
+            Block.LoadTextures(Content);
+            levelManager.LoadContent();
 
             //Test
-            //GameObject testObj = CreateGameObject();
-            //testObj.SetTexture(blockTex, CenterPos.Middle);
-            //testObj.AddScript();
+            //PhysicsObject testObj = new PhysicsObject(CreateGameObject(), PhysicsObject.Type.Dynamic);
+            //physicsManager.AddPhysicsObject(testObj);
+            //testObj.OwningObject.SetTexture(Content.Load<Texture2D>("block"), CenterPos.BottomMiddle);
+            //testObj.OwningObject.Position = new Vector2(2f, -.5f);
 
             base.LoadContent();
+        }
+    }
+
+    internal class LevelManager:ManagedObject
+    {
+        Level level;
+        PhysicsManager physicsManager;
+        public bool enableClickBlockCreation = true;
+        public int blockIdToCreate = 1;
+
+        public LevelManager(PhysicsManager physicsManager)
+        {
+            this.physicsManager = physicsManager;
+        }
+
+        public override void Initialize()
+        {
+            AddManagedObject(level = new Level(physicsManager));
+        }
+
+        public void LoadContent()
+        {
+            if (!level.LoadOrNew("save/level.lvl"))
+            {
+                for (int i = 0; i < 11; ++i)
+                    level.CreateBlock(new(i - 7, 0));
+            }
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            if (enableClickBlockCreation)
+            {
+                Point mousePos = Vector2.Floor(Controls.MouseWorldPos).ToPoint();
+                if (Controls.GetPressed(ControlID.RightClick))
+                {
+                    level.RemoveBlock(mousePos);
+                }
+                else if (Controls.GetPressed(ControlID.LeftClick))
+                {
+                    level.CreateBlock(mousePos, blockIdToCreate);
+                }
+            }
+            if (Controls.GetPressed(ControlID.Save))
+            {
+                level.Save();
+            }
         }
     }
 }
