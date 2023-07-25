@@ -7,12 +7,12 @@ namespace Platformer
     {
         public Player player;
 
-        public FollowPlayerCam(Player player)
+        public FollowPlayerCam(Camera cam, Player player) : base(cam)
         {
             this.player = player;
         }
 
-        public override void DrawUpdate(GameTime gameTime)
+        protected override void DrawUpdate(GameTime gameTime)
         {
             OwningObject.position = player.Center;
         }

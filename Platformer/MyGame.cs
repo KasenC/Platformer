@@ -36,8 +36,8 @@ namespace Platformer
             controls.Add(ControlID.GodMode, new KeyControl(Keys.G));
             controls.Add(ControlID.Save, new KeyControl(Keys.P));
             
-            AddManagedObject(physicsManager = new(10f));
-            AddManagedObject(levelManager = new(physicsManager));
+            physicsManager = new(this, 10f);
+            levelManager = new(this, physicsManager);
 
             base.Initialize();
         }
@@ -45,22 +45,17 @@ namespace Platformer
         protected override void LoadContent()
         {
             //Player
-            player = new Player(CreateGameObject());
+            player = new Player(new GameObject(this));
             physicsManager.AddPhysicsObject(player);
-            player.OwningObject.SetTexture(Content.Load<Texture2D>("Player"));
-            player.OwningObject.Position = new Vector2(0f, 0f);
-            camera.AddScript(new FollowPlayerCam(player));
-            player.enableGodMode = true;
+            new FollowPlayerCam(camera, player);
 
             //Level
             Block.LoadTextures(Content);
             levelManager.LoadContent();
 
             //Test
-            //PhysicsObject testObj = new PhysicsObject(CreateGameObject(), PhysicsObject.Type.Dynamic);
-            //physicsManager.AddPhysicsObject(testObj);
-            //testObj.OwningObject.SetTexture(Content.Load<Texture2D>("block"), CenterPos.BottomMiddle);
-            //testObj.OwningObject.Position = new Vector2(2f, -.5f);
+            //GameObject testObj = new GameObject(this);
+            //testObj.AddManaged(new Script<GameObject>(testObj));
 
             base.LoadContent();
         }
@@ -73,14 +68,10 @@ namespace Platformer
         public bool enableClickBlockCreation = true;
         public int blockIdToCreate = 1;
 
-        public LevelManager(PhysicsManager physicsManager)
+        public LevelManager(IGameObjectManager manager, PhysicsManager physicsManager): base(manager)
         {
             this.physicsManager = physicsManager;
-        }
-
-        public override void Initialize()
-        {
-            AddManagedObject(level = new Level(physicsManager));
+            level = new Level(Manager, physicsManager);
         }
 
         public void LoadContent()
@@ -92,7 +83,7 @@ namespace Platformer
             }
         }
 
-        public override void Update(GameTime gameTime)
+        protected override void Update(GameTime gameTime)
         {
             if (enableClickBlockCreation)
             {

@@ -24,14 +24,13 @@ namespace Platformer
         public Vector2 velocity;
         public Action<PhysicsObject> DisposalFunction { private get; set; }
 
-        public PhysicsObject(GameObject gameObject, Type type, bool feelsGravity = true)
+        public PhysicsObject(GameObject gameObject, Type type, bool feelsGravity = true):base(gameObject)
         {
-            gameObject.AddScript(this);
             this.type = type;
             this.feelsGravity = feelsGravity;
         }
 
-        public override void Update(GameTime gameTime)
+        protected override void Update(GameTime gameTime)
         {
             float timeStep = TimeStep(gameTime);
             if (type == Type.Dynamic)
@@ -42,35 +41,36 @@ namespace Platformer
                 }
             }
 
-            OwningObject.Position += velocity * timeStep;
+            OwningObject.WorldPos += velocity * timeStep;
         }
 
-        public override void Destroy()
+        protected override void Destroy()
         {
             DisposalFunction?.Invoke(this);
         }
 
-        public Rect Bounds
+        public Rect WorldBounds
         {
             get
             {
-                Vector2 topLeft = OwningObject.Position - OwningObject.ObjectPivot;
-                return new Rect(topLeft, OwningObject.ObjectSize);
+                Rect bounds = OwningObject.WorldBounds;
+                bounds.Offset(OwningObject.WorldPos);
+                return bounds;
             }
         }
 
         public Vector2 Center
         {
-            get => OwningObject.Position - OwningObject.ObjectPivot + OwningObject.ObjectSize / 2f;
+            get => OwningObject.WorldPos - OwningObject.WorldPivot + OwningObject.WorldSize / 2f;
         }
 
         public void PositionSide(Side side, float value)
         {
-            float delta = value - Bounds.GetSide(side);
+            float delta = value - WorldBounds.GetSide(side);
             if (side == Side.Top || side == Side.Bottom)
-                OwningObject.Position.Y += delta;
+                OwningObject.WorldPos += new Vector2(0f, delta);
             else
-                OwningObject.Position.X += delta;
+                OwningObject.WorldPos += new Vector2(delta, 0f);
         }
 
         public virtual void HandleCollision(CollisionInfo collision)
@@ -78,34 +78,29 @@ namespace Platformer
             if (type != Type.Dynamic)
                 return;
             PhysicsObject other = collision.obj1 == this ? collision.obj2 : collision.obj1;
-            if (!Bounds.Intersects(other.Bounds))
+            if (!WorldBounds.Intersects(other.WorldBounds))
                 return;
 
             if(collision.side == Side.Top)
             {
-                PositionSide(Side.Top, other.Bounds.Bottom + PhysicsManager.epsilon);
+                PositionSide(Side.Top, other.WorldBounds.Bottom + PhysicsManager.epsilon);
                 velocity.Y = 0f;
             }
             else if(collision.side == Side.Bottom)
             {
-                PositionSide(Side.Bottom, other.Bounds.Top - PhysicsManager.epsilon);
+                PositionSide(Side.Bottom, other.WorldBounds.Top - PhysicsManager.epsilon);
                 velocity.Y = 0f;
             }
             else if(collision.side == Side.Left)
             {
-                PositionSide(Side.Left, other.Bounds.Right + PhysicsManager.epsilon);
+                PositionSide(Side.Left, other.WorldBounds.Right + PhysicsManager.epsilon);
                 velocity.X = 0f;
             }
             else if(collision.side == Side.Right)
             {
-                PositionSide(Side.Right, other.Bounds.Left - PhysicsManager.epsilon);
+                PositionSide(Side.Right, other.WorldBounds.Left - PhysicsManager.epsilon);
                 velocity.X = 0f;
             }
-        }
-
-        protected float TimeStep(GameTime gameTime)
-        {
-            return (float)gameTime.ElapsedGameTime.TotalSeconds;
         }
     }
 
@@ -116,7 +111,7 @@ namespace Platformer
         public static float epsilon = 0.0001f;
 
         /// <param name="gravityStrength"> in units/second^2</param>
-        public PhysicsManager(float gravityStrength)
+        public PhysicsManager(IManager<ManagedObject> manager, float gravityStrength): base(manager, 10f)
         {
             this.gravityStrength = gravityStrength;
         }
@@ -157,7 +152,7 @@ namespace Platformer
             if (obj1.type != PhysicsObject.Type.Dynamic || obj2.type == PhysicsObject.Type.Dynamic)
                 throw new ArgumentException("Current CheckCollision implementation: obj1 must be dynamic and obj2 must be non-dynamic");
 
-            Rect col1 = obj1.Bounds, col2 = obj2.Bounds;
+            Rect col1 = obj1.WorldBounds, col2 = obj2.WorldBounds;
             Rect intersection = col1.Intersect(col2, out bool intersects);
             if (!intersects)
                 return null;
@@ -303,7 +298,7 @@ namespace Platformer
             }
         }
 
-        public override void Update(GameTime gameTime)
+        protected override void Update(GameTime gameTime)
         {
             CheckCollisions();
         }

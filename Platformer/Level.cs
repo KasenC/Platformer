@@ -38,7 +38,7 @@ namespace Platformer
         {
             this.id = id;
             OwningObject.SetTexture(GetTexture(id));
-            OwningObject.Position = location.ToVector2();
+            OwningObject.WorldPos = location.ToVector2();
         }
     }
 
@@ -48,7 +48,7 @@ namespace Platformer
         protected Dictionary<Point, Block> blocks = new();
         public string levelPath;
 
-        public Level(PhysicsManager physicsManager)
+        public Level(IGameObjectManager manager, PhysicsManager physicsManager):base(manager, -2)
         {
             this.physicsManager = physicsManager;
         }
@@ -73,7 +73,7 @@ namespace Platformer
         {
             if (blocks.ContainsKey(location))
                 return;
-            Block block = new Block(CreateGameObject(), location, blockId);
+            Block block = new Block(new GameObject(Manager), location, blockId);
             physicsManager.AddPhysicsObject(block);
             blocks.Add(location, block);
         }

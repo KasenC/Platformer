@@ -1,5 +1,6 @@
 ﻿using Engine;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -14,13 +15,14 @@ namespace Platformer
             minJumpSpeed = 4f,
             maxJumpSpeed = 10f,
             maxWallSlideSpeed = 3f,
-            minWallJumpSpeed = 5f,
+            minWallJumpSpeed = 4f,
             maxWallJumpSpeed = 10f,
             ledgeClimbSpeed = 2f,
+            wallSlideHorizontalVeclocity = 1.8f,
             acceleration = 12f, //in units/s^2
             wallSlideDrag = .5f,
-            maxJumpCharge = .3f, //in seconds
-            maxWallJumpCharge = .3f,
+            maxJumpCharge = .4f, //in seconds
+            maxWallJumpCharge = .4f,
             wallJumpRatio = 1.5f, //Ratio of vertical velocity to horizontal velocity when walljumping
             ledgeClimbRatio = 0.95f; //Height (relative to character) of ledge which can be climbed
 
@@ -35,12 +37,25 @@ namespace Platformer
         protected Side wallSlideSide;
         protected float ledgeHeight;
 
+        protected GameObject jumpBar;
+
         public Player(GameObject obj) : base(obj, Type.Dynamic, true)
         {
-            OwningObject.CenterPos = CenterPos.BottomMiddle;
+            OwningObject.SetTexture(ContentLoad<Texture2D>("Player"), CenterPos.BottomMiddle);
+            OwningObject.WorldPos = new Vector2(.5f, 0f);
+            OwningObject.drawOrder = -1f;
+            enableGodMode = true;
+            
+            jumpBar = new GameObject(Manager, OwningObject);
+            jumpBar.SetTexture(ContentLoad<Texture2D>("block"), CenterPos.TopMiddle);
+            jumpBar.Scale = new(.75f, .1f);
+            jumpBar.ColorMask = new Color(0f, 0f, 1f);
+            jumpBar.Position = new Vector2(0f, .1f);
+            jumpBar.drawOrder = 1f;
+            jumpBar.VisiblePortion = new Rect(Vector2.Zero, jumpBar.WorldSize * Vector2.UnitY);
         }
 
-        public override void Update(GameTime gameTime)
+        protected override void Update(GameTime gameTime)
         {
             HandleInput(gameTime);
             float timeStep = TimeStep(gameTime);
@@ -54,7 +69,7 @@ namespace Platformer
             if(ledgeClimbing)
             {
                 OwningObject.ColorMask = new Color(1f, .6f, 0f);
-                velocity = new Vector2(maxSpeed / 3f * (wallSlideSide == Side.Left ? -1f : 1f), -ledgeClimbSpeed);
+                velocity = new Vector2(wallSlideHorizontalVeclocity * (wallSlideSide == Side.Left ? -1f : 1f), -ledgeClimbSpeed);
             }
             else
             {
@@ -70,7 +85,7 @@ namespace Platformer
                 else if (wallSliding)
                 {
                     OwningObject.ColorMask = new Color(1f, 1f, 0f);
-                    velocity.X = .5f * (wallSlideSide == Side.Left ? -1f : 1f);
+                    velocity.X = wallSlideHorizontalVeclocity * (wallSlideSide == Side.Left ? -1f : 1f);
                     if (velocity.Y > maxWallSlideSpeed)
                         velocity.Y = maxWallSlideSpeed;
                     else if (velocity.Y < 0f)
@@ -82,8 +97,8 @@ namespace Platformer
                 }
             }
 
-            OwningObject.Position += velocity * timeStep;
-            if (OwningObject.Position.Y > 10f)
+            OwningObject.WorldPos += velocity * timeStep;
+            if (OwningObject.WorldPos.Y > 10f)
                 Kill();
             Grounded = false;
             wallSliding = false;
@@ -97,7 +112,7 @@ namespace Platformer
 
             PhysicsObject other = collision.obj1 == this ? collision.obj2 : collision.obj1;
 
-            Rect currentOverlap = Bounds.Intersect(other.Bounds);
+            Rect currentOverlap = WorldBounds.Intersect(other.WorldBounds);
 
             if(collision.HorizontalSurface)
             {
@@ -114,7 +129,7 @@ namespace Platformer
                     {
                         if(collision.side == wallSlideSide)
                         {
-                            ledgeHeight = MathF.Max(ledgeHeight, Bounds.Bottom - other.Bounds.Top);
+                            ledgeHeight = MathF.Max(ledgeHeight, WorldBounds.Bottom - other.WorldBounds.Top);
                         }
                         else
                         {
@@ -125,7 +140,7 @@ namespace Platformer
                     {
                         wallSliding = true;
                         wallSlideSide = collision.side;
-                        ledgeHeight = Bounds.Bottom - other.Bounds.Top;
+                        ledgeHeight = WorldBounds.Bottom - other.WorldBounds.Top;
                     }
                 }
             }
@@ -155,13 +170,13 @@ namespace Platformer
             if(godMode)
             {
                 if (Controls.GetState(ControlID.Left))
-                    OwningObject.Position.X -= maxSpeed * timeStep;
+                    OwningObject.WorldPos -= Vector2.UnitX * maxSpeed * timeStep;
                 if (Controls.GetState(ControlID.Right))
-                    OwningObject.Position.X += maxSpeed * timeStep;
+                    OwningObject.WorldPos += Vector2.UnitX * maxSpeed * timeStep;
                 if (Controls.GetState(ControlID.Up))
-                    OwningObject.Position.Y -= maxSpeed * timeStep;
+                    OwningObject.WorldPos -= Vector2.UnitY * maxSpeed * timeStep;
                 if (Controls.GetState(ControlID.Down))
-                    OwningObject.Position.Y += maxSpeed * timeStep;
+                    OwningObject.WorldPos += Vector2.UnitY * maxSpeed * timeStep;
                 return;
             }
 
@@ -195,47 +210,48 @@ namespace Platformer
                 if(Controls.GetState(ControlID.Jump))
                 {
                     jumpCharge += timeStep;
+                    if (jumpCharge > maxJumpCharge)
+                        jumpCharge = maxJumpCharge;
                 }
                 else
                 {
                     if(jumpCharge > 0f)
                     {
-                        if (jumpCharge > maxJumpCharge)
-                            jumpCharge = maxJumpCharge;
                         float jumpSpeed = minJumpSpeed + (maxJumpSpeed - minJumpSpeed) * (jumpCharge / maxJumpCharge);
                         velocity.Y = -jumpSpeed;
                     }
                     jumpCharge = 0f;
                 }
+                SetJumpBarPercentage(jumpCharge / maxJumpCharge);
             }
             else
             {
                 jumpCharge = 0f;
             }
 
-            if(wallSliding)
+            if (wallSliding)
             {
                 if (Controls.GetState(ControlID.Down))
                 {
                     wallJumpCharge = 0f;
                     wallSliding = false;
                 }
-                else if(Controls.GetState(ControlID.Up) && ledgeHeight <= OwningObject.ObjectSize.Y * ledgeClimbRatio)
+                else if (Controls.GetState(ControlID.Up) && ledgeHeight <= OwningObject.WorldSize.Y * ledgeClimbRatio)
                 {
                     wallJumpCharge = 0f;
                     ledgeClimbing = true;
                 }
-                else if(Controls.GetState(ControlID.Jump))
+                else if (Controls.GetState(ControlID.Jump))
                 {
                     wallJumpCharge += timeStep;
+                    if (wallJumpCharge > maxWallJumpCharge)
+                        wallJumpCharge = maxWallJumpCharge;
                 }
                 else
                 {
-                    if(wallJumpCharge > 0f)
+                    if (wallJumpCharge > 0f)
                     {
                         wallSliding = false;
-                        if (wallJumpCharge > maxWallJumpCharge)
-                            wallJumpCharge = maxWallJumpCharge;
                         float wallJumpSpeed = minWallJumpSpeed + (maxWallJumpSpeed - minWallJumpSpeed) * (wallJumpCharge / maxWallJumpCharge);
                         float wallJumpDirection;
                         if (wallSlideSide == Side.Left)
@@ -246,16 +262,24 @@ namespace Platformer
                     }
                     wallJumpCharge = 0f;
                 }
+                SetJumpBarPercentage(wallJumpCharge / maxWallJumpCharge);
             }
             else
             {
                 wallJumpCharge = 0f;
+                if (!Grounded)
+                    SetJumpBarPercentage(0f);
             }
+        }
+
+        protected void SetJumpBarPercentage(float percent)
+        {
+            jumpBar.VisiblePortion = new Rect(Vector2.Zero, new(percent * jumpBar.Size.X, jumpBar.Size.Y));
         }
 
         public void Kill()
         {
-            OwningObject.Position = Vector2.Zero;
+            OwningObject.WorldPos = Vector2.Zero;
             velocity = Vector2.Zero;
             jumpCharge = 0f;
             wallJumpCharge = 0f;
