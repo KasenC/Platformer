@@ -44,7 +44,7 @@ namespace Platformer
             OwningObject.WorldPos += velocity * timeStep;
         }
 
-        protected override void Destroy()
+        protected override void OnDestroy()
         {
             DisposalFunction?.Invoke(this);
         }

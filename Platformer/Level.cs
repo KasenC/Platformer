@@ -15,6 +15,8 @@ namespace Platformer
     {
         private static readonly Dictionary<int, Texture2D> textures = new();
 
+        //public static readonly Dictionary<int, >
+
         public static void LoadTextures(ContentManager content)
         {
             SetTexture(1, content.Load<Texture2D>("block"));
@@ -39,6 +41,16 @@ namespace Platformer
             this.id = id;
             OwningObject.SetTexture(GetTexture(id));
             OwningObject.WorldPos = location.ToVector2();
+        }
+    }
+
+    internal class TestBlock : Block
+    {
+        public int data;
+
+        public TestBlock(GameObject obj, Point location, int id, int data):base(obj, location, id)
+        {
+            this.data = data;
         }
     }
 
@@ -80,7 +92,10 @@ namespace Platformer
 
         public void New(string path = "")
         {
-            blocks.Clear();
+            foreach(Point location in blocks.Keys)
+            {
+                RemoveBlock(location);
+            }
             levelPath = path;
         }
 
